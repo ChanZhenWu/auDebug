@@ -1,6 +1,6 @@
 #!/usr/bin/perl
 print "\n*****************************************************************************\n";
-print "  3070 auto debug script <v0.7>\n";
+print "  3070 auto debug script <v0.8>\n";
 print "  Author: Noon Chen\n";
 print "  A Professional Tool for Test.\n";
 print "  ",scalar localtime;
@@ -9,7 +9,7 @@ print "\n***********************************************************************
 #-----------------------------------------------------------------------------------------
 # ver 0.6 has updated and validated for pins, shorts auto debug. 2025/2/17
 # ver 0.7 has optimized shorts processing bugs. 2025/2/18
-#
+# ver 0.8 has updated for analog auto debug.
 #
 
 use strict;
@@ -36,7 +36,6 @@ my @groupFail = ();
 my @Fgroup = ();
 my @addShort = ();
 my @sortNodes = ();
-my $shortCount = 0;
 my @shortSeg1 = ();
 my @shortSeg2 = ();
 my @shortSeg3 = ();
@@ -73,7 +72,8 @@ open (Board, "<board");
 			}
 		}
 close Board;
-print  "	FixedNode Scalar: ".scalar@fixednode."\n";
+# print @fixednode,"\n";
+print  "	FixedNode Scale: ".scalar@fixednode."\n";
 print  "	ground node is: ".$ground,"\n\n";
 
 #-----------------------------------------------------------------------------------------
@@ -92,6 +92,8 @@ if ($option == 3) {debugAnalog();}
 sub debugPins{
 print  "	>>> debugging Pins ... \n";
 
+my $pinsCount = 0;
+
 	# extracting debug report
 open (Debug, "<debug/report");
 	while ($array = <Debug>)
@@ -106,7 +108,7 @@ open (Debug, "<debug/report");
 			}
 		}
 close Debug;
-print  "\tfailedPins Scalar: ".scalar@failPins."\n";
+print  "\tfailedPins Scale: ".scalar@failPins."\n";
 
 	# extracting pins test
 open (Pins, "<pins");
@@ -127,6 +129,7 @@ foreach my $i (0..@testPins-1)
 	#print $list[1],"\n";
 	if (grep{ $_ eq $list[1]} @failPins)
 	{
+		$pinsCount++;
 		$testPins[$i] =~ s/(^\s+|\s+$)//g;
 		$testPins[$i] = "!# nodes \"".$list[1]."\"\t\t!auDeb\n";
 		print "\t\tprocessing ".$testPins[$i];
@@ -137,9 +140,9 @@ foreach my $i (0..@testPins-1)
 @testPins = sort @testPins;
 @inaccePins = sort @inaccePins;
 @extraPins = sort @extraPins;
-print  "\ttestedPins Scalar: ".scalar@testPins."\n";
-print  "\tinaccePins Scalar: ".scalar@inaccePins."\n";
-print  "\textraPins Scalar: ".scalar@extraPins."\n";
+print  "\ttestedPins Scale: ".scalar@testPins."\n";
+print  "\tinaccePins Scale: ".scalar@inaccePins."\n";
+print  "\textraPins Scale: ".scalar@extraPins."\n";
 #rename "pins", "pins~";
 
 	# output pins test
@@ -149,6 +152,11 @@ open (Pins, ">pins1");
 	print Pins @extraPins;
 	print Pins @inaccePins;
 close Pins;
+
+rename("pins", "pins.ori") or die "Failed to rename file: $!\n";
+rename("pins1", "pins") or die "Failed to rename file: $!\n";
+
+print  "\n\tauto debugged pins: ".$pinsCount."\n";
 
 }
 
@@ -164,6 +172,7 @@ my $node_name = '';
 my $Fnode = '';
 my $Tnode = '';
 my $comdev = '';
+my $shortCount = 0;
 
 # extracting shorts test
 open (Shorts, "<shorts");
@@ -233,15 +242,15 @@ close Shorts;
 # print @testNodes,"\n";
 # print @untestNodes,"\n";
 
-print  "\ttestedShorts Scalar: ".scalar@testShorts."\n";
-print  "\tuntestShorts Scalar: ".scalar@untestShorts."\n";
-print  "\ttestedNodes Scalar: ".scalar@testNodes."\n";
-print  "\tuntestNodes Scalar: ".scalar@untestNodes."\n";
+print  "\ttestedShorts Scale: ".scalar@testShorts."\n";
+print  "\tuntestShorts Scale: ".scalar@untestShorts."\n";
+print  "\ttestedNodes Scale: ".scalar@testNodes."\n";
+print  "\tuntestNodes Scale: ".scalar@untestNodes."\n";
 
-# 	testedShorts Scalar: 83/121
-# 	untestShorts Scalar: 492/502
-# 	testedNodes Scalar: 950
-# 	untestNodes Scalar: 2598
+# 	testedShorts Scale: 83/121
+# 	untestShorts Scale: 492/502
+# 	testedNodes Scale: 950
+# 	untestNodes Scale: 2598
 
 # extracting debug report
 open (Debug, "<debug/report");
@@ -589,8 +598,8 @@ Next:
 	}
 
 # generating new shorts fail
-print  "\topenFail Scalar: ".scalar@openFail."\n";
-print  "\tshortFail Scalar: ".$shortCount."\n";
+print  "\n\topenFail count: ".scalar@openFail."\n";
+print  "\tshortFail count: ".$shortCount."\n";
 
 my $file = "shorts.ori";
 if (not -e $file){rename "shorts", "shorts.ori";}
@@ -632,12 +641,139 @@ close Shorts;
 sub debugAnalog{
 print  "	>>> debugging Analog ... \n";
 
-if (grep{ $_ eq "GND_KBDBKLT_SGND" } @fixednode){
-	print "found nodes3\n";}
-else{
-	print "not found\n";}
+my @analogfiles = ();
+my $path = "";
+my $swap_count = 0;
+
+print "\tPlease input 'Version' or press 'ENTER' to continue: ";
+my $version=<STDIN>;
+chomp $version;
+
+	# read analog files.
+if ($version)
+{
+# 	print "\tVersion: $version\n";
+  	print "\n\tgathering Version '$version' analog list...\n";
+	@analogfiles = <$version/analog/*.o>;
+	$path = "$version/";
+	foreach (@analogfiles){ $_ =~ s/(\.o)/\n/g}
+  	}
+else
+{
+  	print "\n\tgathering all analog test ...\n";
+	@analogfiles = <analog/*.o>;
+	$path = "";
+	foreach (@analogfiles){ $_ =~ s/(\.o)/\n/g}
+	}
+# print "path: ",$path,"\n";
+# print @analogfiles, "\n\tanalog Scale: ", scalar@analogfiles, "\n";
+print "\tanalog Scale: ", scalar@analogfiles, "\n";
+
+	# handling analog file.
+foreach my $i (0..@analogfiles-1)
+{
+my $RCL = 0;	# indicates Res,Cap,Ind
+my $swap = 0;	# swap tag.
+my $GND = 0;	# judge if ground on i bus tag.
+my $fixed = 0;	# for i/s bus both is fixed.
+my $fixed1 = 0;	# for i bus is fixed node and another signal.
+my @parametric = ();
+my $file = "";
+
+# 	print $analogfiles[$i];
+	$file = substr($analogfiles[$i],rindex($analogfiles[$i],"\/")+1);
+	open (Analog, "<$analogfiles[$i]");
+	while ($array = <Analog>)
+	{
+		$array =~ s/^ +//g;	   #clear head of line spacing
+		#$array =~ s/( +)/ /g; 
+# 		print $array;
+		last if (substr($array,0,4) eq "test");
+		last if ($array =~ "to ground");
+		if (substr($array,0,13) eq "connect i to " or substr($array,0,13) eq "connect s to ")	# all bus
+		{
+			$array =~ s/( +)/ /g; 
+# 			print $array;
+			push(@parametric, $array);
+			my @ibus = split('\"', $array);
+			if ($ibus[1] eq $ground and $ibus[0] eq "connect s to ")			# s bus is ground, no swap action.
+			{
+				$swap = 3;
+				$GND = 3;
+# 				print "\t S-G ",$ibus[1],"\n";
+				next;
+				}
+			elsif (grep{ $_ eq $ibus[1]} @fixednode and $ibus[1] eq $ground and $array =~ "connect i to ")		# i bus is ground, swap it anyway.
+			{
+				$swap = 1;
+				$GND = 1;
+# 				print "\t i-G ",$ibus[1],"\n";
+				}
+			elsif (grep{ $_ eq $ibus[1]} @fixednode and $array =~ "connect s to ")			# s bus is fixed node.
+			{
+				$swap = 1;
+				$fixed++;
+# 				print "\t S-F ",$ibus[1],"\n";
+				}
+			elsif (grep{ $_ eq $ibus[1]} @fixednode and $array =~ "connect i to ")			# i bus is fixed node.
+			{
+				$swap = 1;
+				$fixed++;
+# 				print "\t i-F ",$ibus[1],"\n";
+				}
+			elsif(grep{ $_ ne $ibus[1]} @fixednode and $array =~ "connect i to ")			# other signal
+			{
+				$fixed = 3;
+# 				print "----\t",$ibus[1],"\n";
+				next;
+				}
+			}
+		else	# comments and parametric.
+		{
+# 			print $array;
+			if (substr($array,0,1) ne "\!" and $array =~ "resistor|capacitor|jumper|fuse")	# only swap bus for these types.
+			{
+				$RCL = 1;
+				}
+			push(@parametric, $array);
+			}
+		}
+close Analog;
+
+# 	print "swap $swap ## GND $GND ## fixed $fixed ## swapped: ".$analogfiles[$i];
+# 	if ($RCL == 1 and $swap == 1){print "swap $swap ## GND $GND ## fixed $fixed ## swapped: ".$analogfiles[$i];}
+	if ($RCL == 1 and $swap == 1 and $GND < 3 and $fixed < 2)
+	{
+		$swap_count++;
+		print "\t# bus swapped: ".$analogfiles[$i];
+# 		print @parametric,"\n";
+		foreach my $i (0..@parametric-1)
+		{
+			if ($parametric[$i] =~ "connect i to "){$parametric[$i] = "connect #s to ".substr($parametric[$i],13);}
+			if ($parametric[$i] =~ "connect s to "){$parametric[$i] = "connect #i to ".substr($parametric[$i],13);}
+			}
+		foreach my $i (0..@parametric-1)
+		{
+			if ($parametric[$i] =~ "connect #i to "){$parametric[$i] = "connect i to ".substr($parametric[$i],14);}
+			if ($parametric[$i] =~ "connect #s to "){$parametric[$i] = "connect s to ".substr($parametric[$i],14);}
+			}
+# 		print @parametric,"\n";
+
+		my $temp_file = $path."analog/temp.txt";
+		open (Temp, ">$temp_file");
+			print Temp @parametric;
+		close Temp;
+
+		$analogfiles[$i] =~ s/(^\s+|\s+$)//g;
+		rename($analogfiles[$i], $analogfiles[$i].".ori") or die "Failed to rename file: $!\n";
+		rename($temp_file, $analogfiles[$i]) or die "Failed to rename file: $!\n";
+		}
+	}
+	print "\n\tauto debugged test: ",$swap_count,"\n";
 }
 
-# print "*" x 8;
-print "\n	>>> done ...\n\n";
+
+print "\n	>>> done ...\n";
+<STDIN>;
+
 
