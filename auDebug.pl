@@ -1,6 +1,6 @@
 #!/usr/bin/perl
 print "\n*****************************************************************************\n";
-print "  3070 auto debug script <v0.8>\n";
+print "  3070 auto debug script <v0.91>\n";
 print "  Author: Noon Chen\n";
 print "  A Professional Tool for Test.\n";
 print "  ",scalar localtime;
@@ -9,13 +9,16 @@ print "\n***********************************************************************
 #-----------------------------------------------------------------------------------------
 # ver 0.6 has updated and validated for pins, shorts auto debug. 2025/2/17
 # ver 0.7 has optimized shorts processing bugs. 2025/2/18
-# ver 0.8 has updated for analog auto debug.
-#
+# ver 0.8 has updated for analog auto debug. 2025/2/19
+# ver 0.9 has updated for multiple board 'pins','shorts','analog'.
+# ver 0.91 has optimized for multiple board tacitly approve or covert selection. 2025/2/21
 
 use strict;
 use warnings;
 use List::Util 'uniq';
 
+my $multiBoard = 0;
+my $num = 1;
 my $array = '';
 my $ground = '';
 my $node = '';
@@ -51,10 +54,11 @@ print  "	"."!----!" x 10,"\n";
 
 ############################### extract fixed nodes ######################################
 print  "\n	>>> extracting fixed nodes from Board ... \n";
-open (Board, "<board");
+open (Board, "<board") or die "\t!!! Failed to open file: $!.\n\n";
 	while ($array = <Board>)
 		{
 		$array =~ s/(^\s+|\s+$)//g;
+		if (substr($array,0, 6) eq "BOARDS"){$multiBoard = 1;}
 		if($array =~ "FIXED NODE OPTIONS")
 			{
 			#print $array,"\n";
@@ -73,8 +77,9 @@ open (Board, "<board");
 		}
 close Board;
 # print @fixednode,"\n";
-print  "	FixedNode Scale: ".scalar@fixednode."\n";
-print  "	ground node is: ".$ground,"\n\n";
+# print "\tmultiple board: ",$multiBoard,"\n";
+print  "\tFixedNode Scale: ".scalar@fixednode."\n";
+print  "\tground node is: ".$ground,"\n\n";
 
 #-----------------------------------------------------------------------------------------
 print "	1, auto debug pins\n";
@@ -84,6 +89,14 @@ print "	>>> Please select an item to carry out auto debug: ";
    my $option=<STDIN>;
    chomp $option;
 print "\n";
+
+if ($option =~ "#")
+{
+	$num = substr($option,2); 
+	$option = substr($option,0,1); 
+# 	print $option,$num,"\n";
+	}
+
 if ($option == 1) {debugPins();}
 if ($option == 2) {debugShorts();}
 if ($option == 3) {debugAnalog();}
@@ -95,15 +108,23 @@ print  "	>>> debugging Pins ... \n";
 my $pinsCount = 0;
 
 	# extracting debug report
-open (Debug, "<debug/report");
+open (Debug, "<debug/report") or die "\t!!! Failed to open 'debug/report' file: $!.\n\n";
 	while ($array = <Debug>)
 		{
 			$array =~ s/(^\s+|\s+$)//g;
+			if ($array =~ '----------------------------------------'){next;}
+			elsif ($array =~ 'Shorts Report for "'){print "\n\t!!! 'debug/report' is not corresponding to 'pins'.\n\n"; last;}
+			
 			if ($array =~ '\(\d*\)')
 			{
 				$pins = substr($array,index($array, ' '));
 				$pins =~ s/(^\s+|\s+$)//g;
-				push(@failPins, $pins);
+# 				print substr($pins,0, index($pins,'%')+1),"\n";
+				if($multiBoard == 1)								# for multiboard
+				{
+					if(substr($pins, 0, index($pins,'%')+1) eq "$num%"){$pins = substr($pins, index($pins, '%')+1); push(@failPins, $pins);}
+					}
+				if($multiBoard == 0){push(@failPins, $pins);}		# for singalboard
 				#print $pins."\n";
 			}
 		}
@@ -111,30 +132,51 @@ close Debug;
 print  "\tfailedPins Scale: ".scalar@failPins."\n";
 
 	# extracting pins test
-open (Pins, "<pins");
+open (Pins, "<pins") or open (Pins, "< $num%pins") or die "\t!!! Failed to open 'pins' file: $!.\n\n";
 	while ($array = <Pins>)
 		{
 			$array =~ s/^ +//g;
+			#print $array."\n";
 			if (substr($array,0,4) eq "!!!!" or substr($array,0,5) eq "!IPG:") {push(@filehead, $array);}
-			elsif (substr($array,0,6) eq "!nodes") {push(@inaccePins, $array);}
+			elsif (substr($array,0,1) eq "!" and $array =~ "nodes") {push(@inaccePins, $array);}
 			elsif (substr($array,0,5) eq "nodes") {push(@testPins, $array);}
-			else {push(@extraPins, $array);}
+			elsif ($array =~ "\w+") {push(@extraPins, $array);}
+			#else {push(@extraPins, $array);}
 			}
 close Pins;
+
+# print scalar @testPins,"\n";
+# print scalar @inaccePins,"\n";
+# print scalar @filehead,"\n";
+# print scalar @extraPins,"\n";
 
 	# handling failed pins
 foreach my $i (0..@testPins-1)
 {
 	my @list = split('\"', $testPins[$i]);
-	#print $list[1],"\n";
-	if (grep{ $_ eq $list[1]} @failPins)
+# 	print $list[1],"\n";
+# 	print substr($list[1],index($list[1],'%')+1),"\n";
+	if ($multiBoard == 0)				# for singalboard
 	{
-		$pinsCount++;
-		$testPins[$i] =~ s/(^\s+|\s+$)//g;
-		$testPins[$i] = "!# nodes \"".$list[1]."\"\t\t!auDeb\n";
-		print "\t\tprocessing ".$testPins[$i];
+		if (grep{ $_ eq $list[1]} @failPins)
+		{
+			$pinsCount++;
+			$testPins[$i] =~ s/(^\s+|\s+$)//g;
+			$testPins[$i] = "!# nodes \"".$list[1]."\"\t\t!auDeb\n";
+			print "\t\tprocessing ".$testPins[$i];
+			}
+		}
+	if ($multiBoard == 1)				# for multiboard
+	{
+		if (grep{ $_ eq substr($list[1],index($list[1],'%')+1)} @failPins)
+		{
+			$pinsCount++;
+			$testPins[$i] =~ s/(^\s+|\s+$)//g;
+			$testPins[$i] = "!$num% nodes \"".$list[1]."\"\t\t!auDeb\n";
+			print "\t\tprocessing ".$testPins[$i];
+			}
+		}
 	}
-}
 
 	# sorting pins data
 @testPins = sort @testPins;
@@ -146,16 +188,18 @@ print  "\textraPins Scale: ".scalar@extraPins."\n";
 #rename "pins", "pins~";
 
 	# output pins test
-open (Pins, ">pins1");
-	print Pins @filehead;
-	print Pins @testPins;
-	print Pins @extraPins;
-	print Pins @inaccePins;
-close Pins;
-
-rename("pins", "pins.ori") or die "Failed to rename file: $!\n";
-rename("pins1", "pins") or die "Failed to rename file: $!\n";
-
+if($pinsCount > 0)
+{
+	if ($multiBoard == 0){open (Pins, ">pins1");}					# for singalboard
+	if ($multiBoard == 1){open (Pins, ">$num%pins1");}				# for multiboard
+		print Pins @filehead;
+		print Pins @testPins;
+		print Pins @inaccePins;
+		print Pins @extraPins;
+	close Pins;
+	rename("pins", "pins.ori") or rename("$num%pins", "$num%pins.ori") or die "Failed to rename file: $!\n";
+	rename("pins1", "pins") or rename("$num%pins1", "$num%pins") or die "Failed to rename file: $!\n";
+	}
 print  "\n\tauto debugged pins: ".$pinsCount."\n";
 
 }
@@ -175,13 +219,30 @@ my $comdev = '';
 my $shortCount = 0;
 
 # extracting shorts test
-open (Shorts, "<shorts");
+if ($multiBoard ==0)
+{
+my $file = "shorts.ori";
+if (-e $file)
+	{open (Shorts, "< shorts.ori")  or die "\t!!! Failed to open 'shorts' file: $!.\n\n";}
+else
+	{open (Shorts, "< shorts")  or die "\t!!! Failed to open 'shorts' file: $!.\n\n";}
+	}
+
+if ($multiBoard ==1)
+{
+my $file = "$num%shorts.ori";
+if (-e $file)
+	{open (Shorts, "< $num%shorts.ori")  or die "\t!!! Failed to open 'shorts' file: $!.\n\n";}
+else
+	{open (Shorts, "< $num%shorts")  or die "\t!!! Failed to open 'shorts' file: $!.\n\n";}
+	}
+
 	while ($array = <Shorts>)
 	{
 		chomp $array;
 		$array =~ s/^ +//g;	   #clear head of line spacing
-# 		print "$array\n";
-		
+		#print "$array\n";
+
 			# extracting threshold
 		if (substr($array,0,9) =~ "threshold") 
 		{
@@ -213,7 +274,7 @@ open (Shorts, "<shorts");
 				$array =~ s/(^\s+|\s+$)//g;
 				# print $array,"\n";
 				$array =~ s/( +)/ /g; 
-				# print $array,"\n";
+				#print $array,"\n";
 				push(@testShorts, $array."\n");
 				}
 			}
@@ -253,13 +314,17 @@ print  "\tuntestNodes Scale: ".scalar@untestNodes."\n";
 # 	untestNodes Scale: 2598
 
 # extracting debug report
-open (Debug, "<debug/report");
+open (Debug, "<debug/report") or die "\t!!! Failed to open 'debug/report' file: $!.\n\n";
 	while ($array = <Debug>)
 	{
 		$array =~ s/(^\s+|\s+$)//g;
 		#print $array,"\n";
 		
-		# extracting open data
+		if ($array =~ '----------------------------------------'){next;}
+		elsif ($array =~ 'CHEK-POINT Report for "'){print "\n\t!!! 'debug/report' is not corresponding to 'shorts'.\n"; last;}
+
+		$comdev = "None";
+	# extracting open data
 		if (substr($array,0,6) eq "Open #")
 		{
 				while ($array = <Debug>)
@@ -270,29 +335,60 @@ open (Debug, "<debug/report");
 					# extract From node
 					if (substr($array,0,5) eq "From:")
 					{
-						my @list = split(" ", $array);
-						$Fnode = $list[1];
-						if ($list[1] eq "v")
+					my @list = split(" ", $array);
+					#print substr($list[1],0,2),"\n";
+						if ($multiBoard == 0)				# for singalboard
 						{
-							$array = <Debug>;
-							$array =~ s/(^\s+|\s+$)//g;
-							$Fnode = $array;
+							$Fnode = $list[1];
+							if ($list[1] eq "v")
+							{
+								$array = <Debug>;
+								$array =~ s/(^\s+|\s+$)//g;
+								$Fnode = $array;
+								}
+							}
+							
+						if ($multiBoard == 1 and substr($list[1],0,length($num)+1) eq "$num%")				# for multiboard
+						{
+							$Fnode = "#%".substr($list[1], index($list[1], '%')+1);
+							if ($list[1] eq "v")
+							{
+								$array = <Debug>;
+								$array =~ s/(^\s+|\s+$)//g;
+								$Fnode = "#%".substr($array, index($array, '%')+1);
+								}
 							}
 						#print $Fnode,"\n";
 						}
+					
 					# extract To node
 					if (substr($array,0,3) eq "To:")
 					{
-						my @list = split(" ", $array);
-						$Tnode = $list[1];
-						if ($list[1] eq "v")
+					my @list = split(" ", $array);
+						if ($multiBoard == 0)										# for singalboard
 						{
-							$array = <Debug>;
-							$array =~ s/(^\s+|\s+$)//g;
-							$Tnode = $array;
+							$Tnode = $list[1];
+							if ($list[1] eq "v")
+							{
+								$array = <Debug>;
+								$array =~ s/(^\s+|\s+$)//g;
+								$Tnode = $array;
+								}
+							}
+						
+						if ($multiBoard == 1 and substr($list[1],0,length($num)+1) eq "$num%")		# for multiboard
+						{
+							$Tnode = "#%".substr($list[1], index($list[1], '%')+1);
+							if ($list[1] eq "v")
+							{
+								$array = <Debug>;
+								$array =~ s/(^\s+|\s+$)//g;
+								$Tnode = "#%".substr($array, index($array, '%')+1);
+								}
 							}
 						#print $Tnode,"\n";
 						}
+					
 					if (substr($array,0,15) eq "Common Devices:")
 					{
 						$array = <Debug>;
@@ -302,11 +398,12 @@ open (Debug, "<debug/report");
 					}
 					if ($Fnode ne "" and $Tnode ne "")
 					{
-						#print $Fnode."\|".$Tnode."\|".$comdev."\n";
+# 						print $Fnode."\|".$Tnode."\|".$comdev."\n";
 						push(@openFail, $Fnode."\|".$Tnode."|".$comdev);
 						}
 				}
-		# extract shorts data
+		
+	# extract shorts data
 		@shortFail = ();
 		@groupFail = ();
 		if (substr($array,0,7) eq "Short #")
@@ -317,8 +414,8 @@ open (Debug, "<debug/report");
 		my $Tthres = "";
 		my $comdev = "";
 		my @list = ();
+		$comdev = "None";
 		
-		$shortCount++;
 		$thres = substr($array, index($array," Thresh ")+8, index($array,", Delay ")-(index($array," Thresh ")+8));
 		#print $thres,"\n";
 			while ($array = <Debug>)
@@ -326,80 +423,145 @@ open (Debug, "<debug/report");
 				$array =~ s/(^\s+|\s+$)//g;
 				#print $array,"\n";
 				last if ($array eq "----------------------------------------");
+				next if ($array =~ "&");
 				my @list = split(" +", $array);
-				# extract From node
+				
+			# extract From node
 				if (substr($array,0,5) eq "From:")
 				{
  					my @list = split(" ", $array);
-					$Fnode = $list[1];
 					$Fthres = $list[3];
-					if ($list[1] eq "v")
+					#print  substr($list[1],0,2),"\n";
+					
+					if ($multiBoard == 0)										# for singalboard
 					{
-						$array = <Debug>;
-						$array =~ s/(^\s+|\s+$)//g;
-						$Fnode = $array;
+						$Fnode = $list[1];
+						if ($list[1] eq "v")
+						{
+							$array = <Debug>;
+							$array =~ s/(^\s+|\s+$)//g;
+							$Fnode = $array;
+							}
 						}
+					if ($multiBoard == 1 and substr($list[1],0,length($num)+1) eq "$num%")		# for multiboard
+						{
+							$Fnode = "#%".substr($list[1], index($list[1], '%')+1);
+							if ($list[1] eq "v")
+							{
+								$array = <Debug>;
+								$array =~ s/(^\s+|\s+$)//g;
+								$Fnode = "#%".substr($array, index($array, '%')+1);
+								}
+							}
 					#print $Fnode,"\n";
 					}
-				# extract To node
+					
+			# extract To node
 				if (substr($array,0,3) eq "To:")
 				{
  					my @list = split(" ", $array);
-					$Tnode = $list[1];
 					$Tthres = $list[3];
-					if ($list[1] eq "v")
+
+					if ($multiBoard == 0)										# for singalboard
 					{
-						$array = <Debug>;
-						$array =~ s/(^\s+|\s+$)//g;
-						$Tnode = $array;
+						$Tnode = $list[1];
+						if ($list[1] eq "v")
+						{
+							$array = <Debug>;
+							$array =~ s/(^\s+|\s+$)//g;
+							$Tnode = $array;
+							}
 						}
+						
+					if ($multiBoard == 1 and substr($list[1],0,length($num)+1) eq "$num%")		# for multiboard
+						{
+							$Tnode = "#%".substr($list[1], index($list[1], '%')+1);
+							if ($list[1] eq "v")
+							{
+								$array = <Debug>;
+								$array =~ s/(^\s+|\s+$)//g;
+								$Tnode = "#%".substr($array, index($array, '%')+1);
+								}
+							}
 					#print $Tnode,"\n";
 					}
+					
 				if (substr($array,0,15) eq "Common Devices:")
 				{
 					$array = <Debug>;
 					$array =~ s/(^\s+|\s+$)//g;
 					$comdev = $array;
 					}
-				# list all short nodes
-				if (scalar @list == 3 and $list[1] =~ m/\d+/g and $list[2] =~ m/\d+/g )
+					
+			# list all short nodes
+				if (scalar @list == 3 and $list[1] =~ /\d+$/ and $list[2] =~ /\d+$/)
 				{
-					if ($list[0] eq "v")
+					
+					if ($multiBoard == 0)										# for singalboard
 					{
-						$array = <Debug>;
-						$array =~ s/(^\s+|\s+$)//g;
-						$list[0] = $array;
+						if ($list[0] eq "v")
+						{
+							$array = <Debug>;
+							$array =~ s/(^\s+|\s+$)//g;
+							$list[0] = $array;
+							}
+						#print $list[0],"\|",$list[2],"\n";
+						push(@groupFail, "\|".$list[0]."\|".$list[2]);
 						}
-					#print $list[0],"\|",$list[2],"\n";
-					push(@groupFail, "\|".$list[0]."\|".$list[2]);
+					
+					if ($multiBoard == 1 and substr($list[0],0,length($num)+1) eq "$num%")		# for singalboard
+					{
+						if ($list[0] eq "v")
+						{
+							$array = <Debug>;
+							$array =~ s/(^\s+|\s+$)//g;
+							$list[0] = $array;
+							}
+						#print "#%".substr($list[0], index($list[0], '%')+1);
+						$list[0] = "#%".substr($list[0], index($list[0], '%')+1);
+						#print $list[0],"\|",$list[2],"\n";
+						push(@groupFail, "\|".$list[0]."\|".$list[2]);
+						}
 					}
 				}
-				
+# 				print $thres."\|".$Fnode."\|".$Tnode."\|".$comdev."\n";
+
+				next if ($Fnode eq "");
 				if ($Fnode ne "")
 				{
+					$shortCount++;
 					#print $thres."\|".$Fnode."\|".$Tnode."\|".$comdev."\n";
 					push(@shortFail, $thres."\|".$Fnode."\|".$Fthres."\|".$Tnode."\|".$Tthres."\|".$comdev."\|".@groupFail);
 					}
 			@shortFail = (@shortFail,@groupFail);
 			@Fgroup = (@Fgroup,@shortFail);
+			
 #  			print @shortFail,"\n";
 #  			print @groupFail,"\n";
 #  			print scalar @Fgroup,"\n";
 # 			print scalar @shortFail,"\n";
 # 			print scalar @groupFail,"\n";
 
-			# handling add shorts
+		# handling add shorts
 			use experimental 'smartmatch';
 			@list = split('\|', $shortFail[0]);
 			# handling 2nodes failure
 			if (int($list[2]) <= 8 and int($list[4]) <= 8)
 			{
-				my $pair = "short \"".$list[1]."\" to \"".$list[3]."\"\ !# auDeb/".$list[5]."\n";
+				my $pair = "short \"".$list[1]."\" to \"".$list[3]."\"\ !$num% auDeb/".$list[5]."\n";
 				unless ($pair ~~ @testShorts)	# smart match
 				{
 					#print "short \"".$list[1]."\" to \"".$list[3]."\"\  !# auDeb/".$list[5]."\n";
-					print "\t\tauto debugging - short \"".$list[1]."\" to \"".$list[3]."\""."\n";
-					push (@addShort, "short \"".$list[1]."\" to \"".$list[3]."\"\ !# auDeb/".$list[5]."\n");
+					if ($multiBoard == 0)
+					{
+						print "\t\tauto debugging - short \"".$list[1]."\" to \"".$list[3]."\""."\n";
+						push (@addShort, "short \"".$list[1]."\" to \"".$list[3]."\"\ !# auDeb/".$list[5]."\n");
+						}
+					if ($multiBoard == 1)
+					{
+						print "\t\tauto debugging - $num%short \"".$list[1]."\" to \"".$list[3]."\""."\n";
+						push (@addShort, "short \"".$list[1]."\" to \"".$list[3]."\"\ !$num% auDeb/".$list[5]."\n");
+						}
 					}
 				}
 			elsif (int($list[2]) <= 8 and int($list[4]) > 8)
@@ -412,7 +574,8 @@ open (Debug, "<debug/report");
 				#print "$list[1]	$list[2] -> phantoms failure\n";
 				push (@sortNodes, $list[1]."\|".$list[2]."\n");
 				}
-			# handling >2nodes failure
+			
+		# handling >2nodes failure
 			if (scalar @shortFail > 1)
 			{
 				foreach my $i (0..@groupFail-1)
@@ -422,12 +585,20 @@ open (Debug, "<debug/report");
 					#my $shortExist = 0;
 					if (int($list[2]) <= 8 and int($list2[2]) <= 8)
 					{
-						my $pair = "short \"".$list[1]."\" to \"".$list2[1]."\"\ !# auDeb/".$list[5]."\n";
+						my $pair = "short \"".$list[1]."\" to \"".$list2[1]."\"\ !$num% auDeb/".$list[5]."\n";
 						unless ($pair ~~ @testShorts)	# smart match
 						{
 							#print "short \"".$list[1]."\" to \"".$list2[1]."\"\  !# auDeb/".$list[5]."\n";
-							print "\t\tauto debugging - short \"".$list[1]."\" to \"".$list2[1]."\""."\n";
-							push (@addShort, "short \"".$list[1]."\" to \"".$list2[1]."\"\ !# auDeb/".$list[5]."\n");
+							if ($multiBoard == 0)
+							{
+								print "\t\tauto debugging - short \"".$list[1]."\" to \"".$list2[1]."\""."\n";
+								push (@addShort, "short \"".$list[1]."\" to \"".$list2[1]."\"\ !# auDeb/".$list[5]."\n");
+								}
+							if ($multiBoard == 1)
+							{
+								print "\t\tauto debugging - $num%short \"".$list[1]."\" to \"".$list2[1]."\""."\n";
+								push (@addShort, "short \"".$list[1]."\" to \"".$list2[1]."\"\ !$num% auDeb/".$list[5]."\n");
+								}
 							}
 						}
 					# handling >2nodes > 8ohm failure
@@ -442,12 +613,12 @@ open (Debug, "<debug/report");
 		}
 close Debug;
 
-
+# print @openFail, "openFail: ", scalar @openFail,"\n";
 # print @addShort, "addShort ", scalar @addShort,"\n";
 # print @sortNodes, "sortNodes ", scalar @sortNodes,"\n";
 # print @testShorts, "\n	testShorts ", scalar @testShorts,"\n\n";
 
-# handling shorts item
+# handling open item
 foreach my $i (0..@testShorts-1)
 {
 	my @testList = split('\"', $testShorts[$i]);
@@ -459,10 +630,19 @@ foreach my $i (0..@testShorts-1)
 		if (($testList[1] eq $openList[0] and $testList[3] eq $openList[1]) 
 		or ($testList[3] eq $openList[0] and $testList[1] eq $openList[1]) )
 		{
-				#print $testShorts[$i],"\n"; 
+			#print $testShorts[$i],"\n"; 
+			if ($multiBoard == 0)
+			{
 				print "\t\tauto debugging - ".$testShorts[$i];
 				$testShorts[$i] = "!# auDeb/$openList[2] ".$testShorts[$i];
-				#print $testShorts[$i],"\n"; 
+				}
+			
+			if ($multiBoard == 1)
+			{
+				print "\t\tauto debugging - $num%".$testShorts[$i];
+				$testShorts[$i] = "!$num% auDeb/$openList[2] ".$testShorts[$i];
+				}
+			#print $testShorts[$i],"\n"; 
 			}
 		}
 	}
@@ -603,32 +783,36 @@ print  "\tshortFail count: ".$shortCount."\n";
 
 my $file = "shorts.ori";
 if (not -e $file){rename "shorts", "shorts.ori";}
+$file = "$num%shorts.ori";
+if (not -e $file){rename "$num%shorts", "$num%shorts.ori";}
 
-open (Shorts, ">shorts");
+
+if ($multiBoard == 0){open (Shorts, ">shorts");}				# for multiboard
+if ($multiBoard == 1){open (Shorts, ">$num%shorts");}				# for multiboard
 	print Shorts sort @filehead;
 	print Shorts "threshold           15\n";
 	print Shorts "settling delay 50.00u\n";
 	print Shorts "report common devices, netlist\n";
-	print Shorts "!----!!----!!----!!----!!--- new added ---!!----!!----!!----!!----!\n";
+	print Shorts "!----!!----!!----!!----!!-- new added --!!----!!----!!----!!----!!----!!----!\n";
 	print Shorts @addShort;
-	print Shorts "!----!!----!!----!!----!!--- last item ---!!----!!----!!----!!----!\n";
+	print Shorts "!----!!----!!----!!----!!-- last item --!!----!!----!!----!!----!!----!!----!\n";
 	print Shorts sort @testShorts;
 	print Shorts sort @untestShorts;
-	print Shorts "!----!" x 11,"\n";
+	print Shorts "!----!" x 13,"\n";
 	print Shorts "report phantoms","\n";
-	print Shorts "threshold          1000","\n";
+	if (scalar @shortSeg6 > 0){print Shorts "threshold          1000","\n";}
 	print Shorts @shortSeg6;
-	print Shorts "threshold          405","\n";
+	if (scalar @shortSeg5 > 0){print Shorts "threshold          405","\n";}
 	print Shorts @shortSeg5;
-	print Shorts "threshold          180","\n";
+	if (scalar @shortSeg4 > 0){print Shorts "threshold          180","\n";}
 	print Shorts @shortSeg4;
-	print Shorts "threshold          61","\n";
+	if (scalar @shortSeg3 > 0){print Shorts "threshold          61","\n";}
 	print Shorts @shortSeg3;
-	print Shorts "threshold          22","\n";
+	if (scalar @shortSeg2 > 0){print Shorts "threshold          22","\n";}
 	print Shorts @shortSeg2;
-	print Shorts "threshold          8","\n";
+	if (scalar @shortSeg1 > 0){print Shorts "threshold          8","\n";}
 	print Shorts @shortSeg1;
-	print Shorts sort @untestNodes,"\n";
+	print Shorts sort @untestNodes;
 close Shorts;
 
 # 10/15/16.9/20/22/24.9/33/42/47/49.9/51/68/100/113/150/169/180/200/220/240/249/270/300/340/360/470/499/576/590/665/680/715
@@ -682,7 +866,7 @@ my $file = "";
 
 # 	print $analogfiles[$i];
 	$file = substr($analogfiles[$i],rindex($analogfiles[$i],"\/")+1);
-	open (Analog, "<$analogfiles[$i]");
+	open (Analog, "<$analogfiles[$i]") or die "\t!!! Failed to open '".substr($analogfiles[$i],0,-1)."' file: $!.\n\n";
 	while ($array = <Analog>)
 	{
 		$array =~ s/^ +//g;	   #clear head of line spacing
@@ -690,12 +874,20 @@ my $file = "";
 # 		print $array;
 		last if (substr($array,0,4) eq "test");
 		last if ($array =~ "to ground");
+		last if ($array =~ "to pins");
 		if (substr($array,0,13) eq "connect i to " or substr($array,0,13) eq "connect s to ")	# all bus
 		{
 			$array =~ s/( +)/ /g; 
-# 			print $array;
+# 			print "\t",$array;
 			push(@parametric, $array);
 			my @ibus = split('\"', $array);
+			
+			if ($multiBoard == 1)										# for multiboard
+			{
+				$ibus[1] = substr($ibus[1],2);
+# 				print $ibus[1],"\n";
+				}
+			
 			if ($ibus[1] eq $ground and $ibus[0] eq "connect s to ")			# s bus is ground, no swap action.
 			{
 				$swap = 3;
@@ -773,7 +965,7 @@ close Analog;
 }
 
 
-print "\n	>>> done ...\n";
-<STDIN>;
+print "\n	>>> done ...\n\n";
+# <STDIN>;
 
 
