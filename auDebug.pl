@@ -1,6 +1,6 @@
 #!/usr/bin/perl
 print "\n*****************************************************************************\n";
-print "  3070 auto debug script <v0.91>\n";
+print "  3070 auto debug script <v0.94>\n";
 print "  Author: Noon Chen\n";
 print "  A Professional Tool for Test.\n";
 print "  ",scalar localtime;
@@ -12,6 +12,8 @@ print "\n***********************************************************************
 # ver 0.8 has updated for analog auto debug. 2025/2/19
 # ver 0.9 has updated for multiple board 'pins','shorts','analog'.
 # ver 0.91 has optimized for multiple board tacitly approve or covert selection. 2025/2/21
+# ver 0.93 has optimized read file error handling. 2025/2/25
+# ver 0.94 has added log output. 2025/2/28
 
 use strict;
 use warnings;
@@ -54,7 +56,8 @@ print  "	"."!----!" x 10,"\n";
 
 ############################### extract fixed nodes ######################################
 print  "\n	>>> extracting fixed nodes from Board ... \n";
-open (Board, "<board") or die "\t!!! Failed to open file: $!.\n\n";
+open (Board, "<board") or warn "\t!!! Failed to open 'board' file: $!.\n\n";
+if ($! eq "No such file or directory"){print "\n\t>>> program exiting ...\n"; <STDIN>; exit;}
 	while ($array = <Board>)
 		{
 		$array =~ s/(^\s+|\s+$)//g;
@@ -108,7 +111,8 @@ print  "	>>> debugging Pins ... \n";
 my $pinsCount = 0;
 
 	# extracting debug report
-open (Debug, "<debug/report") or die "\t!!! Failed to open 'debug/report' file: $!.\n\n";
+open (Debug, "<debug/report") or warn "\t!!! Failed to open 'debug/report' file: $!.\n\n";
+if (not -e "debug/report"){return;}
 	while ($array = <Debug>)
 		{
 			$array =~ s/(^\s+|\s+$)//g;
@@ -132,7 +136,8 @@ close Debug;
 print  "\tfailedPins Scale: ".scalar@failPins."\n";
 
 	# extracting pins test
-open (Pins, "<pins") or open (Pins, "< $num%pins") or die "\t!!! Failed to open 'pins' file: $!.\n\n";
+open (Pins, "<pins") or open (Pins, "< $num%pins") or warn "\t!!! Failed to open 'pins' file: $!.\n\n";
+if ($! eq "No such file or directory"){return;}
 	while ($array = <Pins>)
 		{
 			$array =~ s/^ +//g;
@@ -140,7 +145,7 @@ open (Pins, "<pins") or open (Pins, "< $num%pins") or die "\t!!! Failed to open 
 			if (substr($array,0,4) eq "!!!!" or substr($array,0,5) eq "!IPG:") {push(@filehead, $array);}
 			elsif (substr($array,0,1) eq "!" and $array =~ "nodes") {push(@inaccePins, $array);}
 			elsif (substr($array,0,5) eq "nodes") {push(@testPins, $array);}
-			elsif ($array =~ "\w+") {push(@extraPins, $array);}
+			elsif ($array =~ /\w+/) {push(@extraPins, $array);}
 			#else {push(@extraPins, $array);}
 			}
 close Pins;
@@ -223,19 +228,19 @@ if ($multiBoard ==0)
 {
 my $file = "shorts.ori";
 if (-e $file)
-	{open (Shorts, "< shorts.ori")  or die "\t!!! Failed to open 'shorts' file: $!.\n\n";}
+	{open (Shorts, "< shorts.ori")  or warn "\t!!! Failed to open 'shorts' file: $!.\n\n";}
 else
-	{open (Shorts, "< shorts")  or die "\t!!! Failed to open 'shorts' file: $!.\n\n";}
+	{open (Shorts, "< shorts")  or warn "\t!!! Failed to open 'shorts' file: $!.\n\n";}
 	}
-
 if ($multiBoard ==1)
 {
 my $file = "$num%shorts.ori";
 if (-e $file)
-	{open (Shorts, "< $num%shorts.ori")  or die "\t!!! Failed to open 'shorts' file: $!.\n\n";}
+	{open (Shorts, "< $num%shorts.ori")  or warn "\t!!! Failed to open 'shorts' file: $!.\n\n";}
 else
-	{open (Shorts, "< $num%shorts")  or die "\t!!! Failed to open 'shorts' file: $!.\n\n";}
+	{open (Shorts, "< $num%shorts")  or warn "\t!!! Failed to open 'shorts' file: $!.\n\n";}
 	}
+if ($! eq "No such file or directory"){return;}
 
 	while ($array = <Shorts>)
 	{
@@ -314,7 +319,8 @@ print  "\tuntestNodes Scale: ".scalar@untestNodes."\n";
 # 	untestNodes Scale: 2598
 
 # extracting debug report
-open (Debug, "<debug/report") or die "\t!!! Failed to open 'debug/report' file: $!.\n\n";
+open (Debug, "<debug/report") or warn "\t!!! Failed to open 'debug/report' file: $!.\n\n";
+if (not -e "debug/report"){return;}
 	while ($array = <Debug>)
 	{
 		$array =~ s/(^\s+|\s+$)//g;
@@ -543,13 +549,14 @@ open (Debug, "<debug/report") or die "\t!!! Failed to open 'debug/report' file: 
 # 			print scalar @groupFail,"\n";
 
 		# handling add shorts
-			use experimental 'smartmatch';
+		#	use experimental 'smartmatch';
 			@list = split('\|', $shortFail[0]);
 			# handling 2nodes failure
 			if (int($list[2]) <= 8 and int($list[4]) <= 8)
 			{
 				my $pair = "short \"".$list[1]."\" to \"".$list[3]."\"\ !$num% auDeb/".$list[5]."\n";
-				unless ($pair ~~ @testShorts)	# smart match
+				#unless ($pair ~~ @testShorts)	# smart match
+				unless (grep{$_ eq $pair} @testShorts)
 				{
 					#print "short \"".$list[1]."\" to \"".$list[3]."\"\  !# auDeb/".$list[5]."\n";
 					if ($multiBoard == 0)
@@ -586,7 +593,8 @@ open (Debug, "<debug/report") or die "\t!!! Failed to open 'debug/report' file: 
 					if (int($list[2]) <= 8 and int($list2[2]) <= 8)
 					{
 						my $pair = "short \"".$list[1]."\" to \"".$list2[1]."\"\ !$num% auDeb/".$list[5]."\n";
-						unless ($pair ~~ @testShorts)	# smart match
+						#unless ($pair ~~ @testShorts)	# smart match
+						unless (grep{$_ eq $pair} @testShorts)
 						{
 							#print "short \"".$list[1]."\" to \"".$list2[1]."\"\  !# auDeb/".$list[5]."\n";
 							if ($multiBoard == 0)
@@ -825,6 +833,10 @@ close Shorts;
 sub debugAnalog{
 print  "	>>> debugging Analog ... \n";
 
+(my $sec, my $min, my $hour, my $mday, my $mon, my $year,my $wday,my $yday,my $isdst) = localtime(time);
+my $alog = ('auDebug'."-".$hour.$min.$sec.'.log');
+open (Alog, ">$alog");
+
 my @analogfiles = ();
 my $path = "";
 my $swap_count = 0;
@@ -865,8 +877,9 @@ my @parametric = ();
 my $file = "";
 
 # 	print $analogfiles[$i];
-	$file = substr($analogfiles[$i],rindex($analogfiles[$i],"\/")+1);
-	open (Analog, "<$analogfiles[$i]") or die "\t!!! Failed to open '".substr($analogfiles[$i],0,-1)."' file: $!.\n\n";
+# 	$file = substr($analogfiles[$i],rindex($analogfiles[$i],"\/")+1);
+	open (Analog, "<$analogfiles[$i]") or warn "\t!!! Failed to open '".substr($analogfiles[$i],0,-1)."' file: $!.\n";
+	if ($! eq "No such file or directory"){next;}
 	while ($array = <Analog>)
 	{
 		$array =~ s/^ +//g;	   #clear head of line spacing
@@ -959,13 +972,12 @@ close Analog;
 		$analogfiles[$i] =~ s/(^\s+|\s+$)//g;
 		rename($analogfiles[$i], $analogfiles[$i].".ori") or die "Failed to rename file: $!\n";
 		rename($temp_file, $analogfiles[$i]) or die "Failed to rename file: $!\n";
+		print Alog $analogfiles[$i]." has been updated.\n";
 		}
 	}
 	print "\n\tauto debugged test: ",$swap_count,"\n";
+	close Alog;
 }
 
-
-print "\n	>>> done ...\n\n";
-# <STDIN>;
-
-
+print "\n\t>>> done ...\n\n";
+#system 'pause';
