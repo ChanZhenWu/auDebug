@@ -1720,9 +1720,9 @@ $workbook-> write($row, $col, 'HiLimit', $format_head);
 $row = 0; $col = 4;
 $workbook-> write($row, $col, 'LowLimit', $format_head);
 $row = 0; $col = 5;
-$workbook-> write($row, $col, 'Max (Marginal)', $format_head);
+$workbook-> write($row, $col, 'Max', $format_head);
 $row = 0; $col = 6;
-$workbook-> write($row, $col, 'Min (Marginal)', $format_head);
+$workbook-> write($row, $col, 'Min', $format_head);
 $row = 0; $col = 7;
 $workbook-> write($row, $col, 'Average', $format_head);
 $row = 0; $col = 8;
@@ -1831,11 +1831,11 @@ foreach my $analogfiles (@analogfiles)
 			$workbook-> write_formula($row, 9, "=IF(I".($row+1).">0,(D".($row+1)."-E".($row+1).")/6/I".($row+1).")", $format_data);  #输出CP
 			$workbook-> write_formula($row, 10, "=MIN((D".($row+1)."-H".($row+1)."),(H".($row+1)."-E".($row+1)."))/I".($row+1)."/3", $format_data);  #输出CPK
 
-       		$workbook-> conditional_formatting($row, 5,
+       		$workbook-> conditional_formatting($row, 3,
     		{
     			type     => 'cell',
-    		 	criteria => 'greater than',
-    		 	value    => "=D".($row+1)."*0.75",
+    		 	criteria => 'less than',
+    		 	value    => "=F".($row+1)."+D".($row+1)."*0.3",
     		 	format   => $format_Fcpk,
     			});
        		$row++;
@@ -1856,19 +1856,19 @@ foreach my $analogfiles (@analogfiles)
 			$workbook-> write_formula($row, 9, "=IF(I".($row+1).">0,(D".($row+1)."-E".($row+1).")/6/I".($row+1).")", $format_data);  #输出CP
 			$workbook-> write_formula($row, 10, "=MIN((D".($row+1)."-H".($row+1)."),(H".($row+1)."-E".($row+1)."))/I".($row+1)."/3", $format_data);  #输出CPK
 
-       		$workbook-> conditional_formatting($row, 5,
-    		{
-    			type     => 'cell',
-    		 	criteria => 'greater than',
-    		 	value    => "=D".($row+1)."-(D".($row+1)."-E".($row+1).")*0.2",
-    		 	format   => $format_Fcpk,
-    			});
-
-       		$workbook-> conditional_formatting($row, 6,
+       		$workbook-> conditional_formatting($row, 3,
     		{
     			type     => 'cell',
     		 	criteria => 'less than',
-    		 	value    => "=E".($row+1)."+(D".($row+1)."-E".($row+1).")*0.2",
+    		 	value    => "=F".($row+1)."+(D".($row+1)."-E".($row+1).")*0.2",
+    		 	format   => $format_Fcpk,
+    			});
+
+       		$workbook-> conditional_formatting($row, 4,
+    		{
+    			type     => 'cell',
+    		 	criteria => 'greater than',
+    		 	value    => "=G".($row+1)."-(D".($row+1)."-E".($row+1).")*0.2",
     		 	format   => $format_Fcpk,
     			});
     		
@@ -1891,19 +1891,19 @@ foreach my $analogfiles (@analogfiles)
 			$workbook-> write_formula($row, 9, "=IF(I".($row+1).">0,(D".($row+1)."-E".($row+1).")/6/I".($row+1).")", $format_data);  #输出CP
 			$workbook-> write_formula($row, 10, "=MIN((D".($row+1)."-H".($row+1)."),(H".($row+1)."-E".($row+1)."))/I".($row+1)."/3", $format_data);  #输出CPK
 
-       		$workbook-> conditional_formatting($row, 5,
-    		{
-    			type     => 'cell',
-    		 	criteria => 'greater than',
-    		 	value    => "=D".($row+1)."-(D".($row+1)."-E".($row+1).")*0.2",
-    		 	format   => $format_Fcpk,
-    			});
-
-       		$workbook-> conditional_formatting($row, 6,
+       		$workbook-> conditional_formatting($row, 3,
     		{
     			type     => 'cell',
     		 	criteria => 'less than',
-    		 	value    => "=E".($row+1)."+(D".($row+1)."-E".($row+1).")*0.2",
+    		 	value    => "=F".($row+1)."+(D".($row+1)."-E".($row+1).")*0.2",
+    		 	format   => $format_Fcpk,
+    			});
+
+       		$workbook-> conditional_formatting($row, 4,
+    		{
+    			type     => 'cell',
+    		 	criteria => 'greater than',
+    		 	value    => "=G".($row+1)."-(D".($row+1)."-E".($row+1).")*0.2",
     		 	format   => $format_Fcpk,
     			});
     		
@@ -1925,18 +1925,18 @@ foreach my $analogfiles (@analogfiles)
 			$workbook-> write_formula($row, 9, "=IF(I".($row+1).">0,(D".($row+1)."-E".($row+1).")/6/I".($row+1).")", $format_data);  #输出CP
 			$workbook-> write_formula($row, 10, "=MIN((D".($row+1)."-H".($row+1)."),(H".($row+1)."-E".($row+1)."))/I".($row+1)."/3", $format_data);  #输出CPK
 
-       		$workbook-> conditional_formatting($row, 5,
-    		{
-    			type     => 'cell',
-    		 	criteria => 'greater than',
-    		 	value    => "=D".($row+1)."-(D".($row+1)."-E".($row+1).")*0.2",
-    		 	format   => $format_Fcpk,
-    			});
-       		$workbook-> conditional_formatting($row, 6,
+       		$workbook-> conditional_formatting($row, 3,
     		{
     			type     => 'cell',
     		 	criteria => 'less than',
-    		 	value    => "=E".($row+1)."+(D".($row+1)."-E".($row+1).")*0.2",
+    		 	value    => "=F".($row+1)."+(D".($row+1)."-E".($row+1).")*0.2",
+    		 	format   => $format_Fcpk,
+    			});
+       		$workbook-> conditional_formatting($row, 4,
+    		{
+    			type     => 'cell',
+    		 	criteria => 'greater than',
+    		 	value    => "=G".($row+1)."-(D".($row+1)."-E".($row+1).")*0.2",
     		 	format   => $format_Fcpk,
     			});
     		
@@ -1961,18 +1961,18 @@ foreach my $analogfiles (@analogfiles)
 
 			#Hli = 41.25-(41.25-28.05)*0.25
 			#Lli = 28.05+(41.25-28.05)*0.25
-       		$workbook-> conditional_formatting($row, 5,
-    		{
-    			type     => 'cell',
-    		 	criteria => 'greater than',
-    		 	value    => "=D".($row+1)."-(D".($row+1)."-E".($row+1).")*0.2",
-    		 	format   => $format_Fcpk,
-    			});
-       		$workbook-> conditional_formatting($row, 6,
+       		$workbook-> conditional_formatting($row, 3,
     		{
     			type     => 'cell',
     		 	criteria => 'less than',
-    		 	value    => "=E".($row+1)."+(D".($row+1)."-E".($row+1).")*0.2",
+    		 	value    => "=F".($row+1)."+(D".($row+1)."-E".($row+1).")*0.2",
+    		 	format   => $format_Fcpk,
+    			});
+       		$workbook-> conditional_formatting($row, 4,
+    		{
+    			type     => 'cell',
+    		 	criteria => 'greater than',
+    		 	value    => "=G".($row+1)."-(D".($row+1)."-E".($row+1).")*0.2",
     		 	format   => $format_Fcpk,
     			});
     		
@@ -1996,18 +1996,18 @@ foreach my $analogfiles (@analogfiles)
 			$workbook-> write_formula($row, 9, "=IF(I".($row+1).">0,(D".($row+1)."-E".($row+1).")/6/I".($row+1).")", $format_data);  #输出CP
 			$workbook-> write_formula($row, 10, "=MIN((D".($row+1)."-H".($row+1)."),(H".($row+1)."-E".($row+1)."))/I".($row+1)."/3", $format_data);  #输出CPK
 
-       		$workbook-> conditional_formatting($row, 5,
-    		{
-    			type     => 'cell',
-    		 	criteria => 'greater than',
-    		 	value    => "=D".($row+1)."-(D".($row+1)."-E".($row+1).")*0.2",
-    		 	format   => $format_Fcpk,
-    			});
-       		$workbook-> conditional_formatting($row, 6,
+       		$workbook-> conditional_formatting($row, 3,
     		{
     			type     => 'cell',
     		 	criteria => 'less than',
-    		 	value    => "=E".($row+1)."+(D".($row+1)."-E".($row+1).")*0.2",
+    		 	value    => "=F".($row+1)."+(D".($row+1)."-E".($row+1).")*0.2",
+    		 	format   => $format_Fcpk,
+    			});
+       		$workbook-> conditional_formatting($row, 4,
+    		{
+    			type     => 'cell',
+    		 	criteria => 'greater than',
+    		 	value    => "=G".($row+1)."-(D".($row+1)."-E".($row+1).")*0.2",
     		 	format   => $format_Fcpk,
     			});
 			
