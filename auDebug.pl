@@ -1,6 +1,6 @@
 #!/usr/bin/perl
 print "\n*****************************************************************************\n";
-print "  3070 auto debug script <v0.99>\n";
+print "  3070 auto debug script <v1.0>\n";
 print "  Author: Noon Chen\n";
 print "  A Professional Tool for Test.\n";
 print "  ",scalar localtime;
@@ -19,6 +19,7 @@ print "\n";
 # ver 0.97 has merged Bdg runner script. 2025/3/15
 # ver 0.98 has added compile action. 2025/3/16
 # ver 0.99 has updated automatic version screen and added comments for 'ALLCOMP_statement'. 2025/3/18
+# ver 1.0 fix and validated to final release. 2025/4/29
 
 use strict;
 use warnings;
@@ -26,35 +27,16 @@ use List::Util 'uniq';
 use Excel::Writer::XLSX;
 use File::Copy;
 use Time::HiRes qw(time);
+use List::Util qw(min max sum);
+use GD::Graph::points;
+use PDF::Builder;
+use PDF::Table;
 
-my $multiBoard = 0;
-my $num = 1;
-my $array = '';
-my $ground = '';
-my $node = '';
-my $pins = '';
-my @fixednode = ();
-my @filehead = ();
-my @failPins = ();
-my @testPins = ();
-my @inaccePins = ();
-my @extraPins = ();
-my @testShorts = ();
-my @untestShorts = ();
-my @testNodes = ();
-my @untestNodes = ();
-my @openFail = ();
-my @shortFail = ();
-my @groupFail = ();
-my @Fgroup = ();
-my @addShort = ();
-my @sortNodes = ();
-my @shortSeg1 = ();
-my @shortSeg2 = ();
-my @shortSeg3 = ();
-my @shortSeg4 = ();
-my @shortSeg5 = ();
-my @shortSeg6 = ();
+my $multiBoard = 0; my $num = 1; my $array = ''; my $ground = ''; my $node = ''; my $pins = '';
+my @fixednode = (); my @filehead = (); my @failPins = (); my @testPins = (); my @inaccePins = ();
+my @extraPins = (); my @testShorts = (); my @untestShorts = (); my @testNodes = (); my @untestNodes = ();
+my @openFail = (); my @shortFail = (); my @groupFail = (); my @Fgroup = (); my @addShort = (); my @sortNodes = ();
+my @shortSeg1 = (); my @shortSeg2 = (); my @shortSeg3 = (); my @shortSeg4 = (); my @shortSeg5 = (); my @shortSeg6 = ();
 my @failAnalog = ();
 
 #-----------------------------------------------------------------------------------------
@@ -69,6 +51,8 @@ print "\n	>>> Please select an item to carry out: ";
 	my $option=<STDIN>;
 	chomp $option;
 print "\n";
+
+my $start_time = time();
 
 if ($option =~ "#")
 {
@@ -91,7 +75,7 @@ if ($option == 7) {Bdg_runner();}
 sub version_screen{
 our $VR = "False";
 print  "	>>> version screening ... \n";
-open (Config, "<config") or warn "\t!!! Failed to open 'config' file: $!.\n\n";
+open (Config, "<config") or warn "\t!!! Failed to open 'config' file: $!.\n";
 if ($! eq "No such file or directory"){print "\n\t>>> program exiting ...\n"; <STDIN>; exit;}
 while($array = <Config>)
 {
@@ -115,7 +99,7 @@ print  "	"."!----!" x 10,"\n";
 ############################### extract fixed nodes ######################################
 sub extract_fixnode{
 print  "\n	>>> extracting fixed nodes from Board ... \n";
-open (Board, "<board") or warn "\t!!! Failed to open 'board' file: $!.\n\n";
+open (Board, "<board") or warn "\t!!! Failed to open 'board' file: $!.\n";
 if ($! eq "No such file or directory"){print "\n\t>>> program exiting ...\n"; <STDIN>; exit;}
 	while ($array = <Board>)
 	{
@@ -150,20 +134,13 @@ sub wiring_check{
 print  "\n  >>> processing fixture.o ... \n\n";
 my $Nnum = 0;	#node numbers
 my $Wnum = 0;   #Wire numbers
-my @shorts = ();
-my @Spins =();
-my @pins =();
-my $short_pair = '';
-my $BRC = '';
-my $BRCbuffer = '';
-my @node = '';
-my @nodes = '';
-my $panel = "";
+my @shorts = (); my @Spins =(); my @pins =(); my $short_pair = ''; my $BRC = '';
+my $BRCbuffer = ''; my @node = ''; my @nodes = ''; my $panel = "";
 
 my $wirelist = "wirelist.o";
 
 if(-e $wirelist){
-	print "  project files found.\n\n";
+	print "  project files has found.\n\n";
 	}
 else{
 	print "  fixture only project.\n\n";
@@ -219,7 +196,8 @@ else{
 	print Boardxy "	UNITS  MILS;\n";
 	print Boardxy "	SCALE  0.1;\n";
 
-	open (Fixture, "<fixture/fixture.o");
+	open (Fixture, "<fixture/fixture.o") or warn "\t!!! Failed to open 'fixture.o' file: $!.\n";
+		if ($! eq "No such file or directory"){print "\n\t>>> program exiting ...\n"; <STDIN>; exit;}
 	while (my $array = <Fixture>)
 	{
 		$array =~ s/(^\s+|\s+$)//g;
@@ -256,7 +234,8 @@ open (fix_shorts, ">fix_shorts");
 print fix_pins "!!!!   16    0    1 1460865776   0000                                         \n";
 print fix_shorts "!!!!    9    0    1 1460733871   0000                                         \n";
 
-open (Fixture, "< ./fixture/fixture.o");
+open (Fixture, "< ./fixture/fixture.o") or warn "\t!!! Failed to open 'fixture.o' file: $!.\n";
+	if ($! eq "No such file or directory"){print "\n\t>>> program exiting ...\n"; <STDIN>; exit;}
 open (Report, ">Details.txt");
 	while(my $LIST = <Fixture>)
 	{
@@ -484,13 +463,8 @@ print  "\n\tauto debugged pins: ".$pinsCount."\n";
 sub debugShorts{
 print  "\n	>>> debugging Shorts ... \n";
 
-my @testShorts = ();
-my $thres = '';
-my $delay = '';
-my $node_name = '';
-my $Fnode = '';
-my $Tnode = '';
-my $comdev = '';
+my @testShorts = (); my $thres = ''; my $delay = ''; my $node_name = ''; my $Fnode = '';
+my $Tnode = ''; my $comdev = '';
 my $shortCount = 0;
 
 # extracting shorts test
@@ -539,7 +513,7 @@ if ($! eq "No such file or directory"){return;}
 			# extracting shorts test
 		if ($array =~ "short")
 		{
-		#print "$array\n";
+			#print "$array\n";
 			if(substr($array,0,1) eq "!"){
 				$array =~ s/(^\s+|\s+$)//g;                     	#clear all spacing
 				# print $array,"\n";
@@ -584,11 +558,6 @@ print  "\ttestedShorts Scale: ".scalar@testShorts."\n";
 print  "\tuntestShorts Scale: ".scalar@untestShorts."\n";
 print  "\ttestedNodes Scale: ".scalar@testNodes."\n";
 print  "\tuntestNodes Scale: ".scalar@untestNodes."\n";
-
-# 	testedShorts Scale: 83/121
-# 	untestShorts Scale: 492/502
-# 	testedNodes Scale: 950
-# 	untestNodes Scale: 2598
 
 # extracting debug report
 open (Debug, "<debug/report") or warn "\t!!! Failed to open 'debug/report' file: $!.\n\n";
@@ -813,12 +782,12 @@ if (not -e "debug/report"){return;}
 					}
 			@shortFail = (@shortFail,@groupFail);
 			@Fgroup = (@Fgroup,@shortFail);
-			
-#  			print @shortFail,"\n";
-#  			print @groupFail,"\n";
-#  			print scalar @Fgroup,"\n";
-# 			print scalar @shortFail,"\n";
-# 			print scalar @groupFail,"\n";
+
+ 		# print @shortFail,"\n";
+ 		# print @groupFail,"\n";
+ 		# print scalar @Fgroup,"\n";
+		# print scalar @shortFail,"\n";
+		# print scalar @groupFail,"\n";
 
 		# handling add shorts
 		#	use experimental 'smartmatch';
@@ -929,12 +898,8 @@ foreach my $i (0..@testShorts-1)
 
 # handling nodes item
 $delay = "";
-my $delaySeg1 = "";
-my $delaySeg2 = "";
-my $delaySeg3 = "";
-my $delaySeg4 = "";
-my $delaySeg5 = "";
-my $delaySeg6 = "";
+my $delaySeg1 = ""; my $delaySeg2 = ""; my $delaySeg3 = "";
+my $delaySeg4 = ""; my $delaySeg5 = ""; my $delaySeg6 = "";
 
 foreach my $i (0..@testNodes-1)
 {
@@ -1148,6 +1113,7 @@ my $fixed1 = 0;	# for i bus is fixed node and another signal.
 my @parametric = ();
 my $file = "";
 
+	$analogfiles[$i] =~ s/\n/ /g;
 # 	print $analogfiles[$i];
 # 	$file = substr($analogfiles[$i],rindex($analogfiles[$i],"\/")+1);
 	open (Analog, "<$analogfiles[$i]") or warn "\t!!! Failed to open '".substr($analogfiles[$i],0,-1)."' file: $!.\n";
@@ -1249,7 +1215,7 @@ close Analog;
 
 		my $value = "";
  		if ($VR eq "True")
- 			{$value = system ("acomp -V $version $analogfiles[$i] > NULL");}
+ 			{$value = system ("acomp -V '' $analogfiles[$i] > NULL");}
  		else
  			{$value = system ("acomp $analogfiles[$i] -l > NULL");}
 
@@ -1275,12 +1241,8 @@ close Analog;
 sub extract_analog{
 print  "	>>> extracting analog parameters ... \n";
 
-my @analogfiles = ();
-my $analogfiles1 = "";
-my @parametric1 = ();
-my @parametric2 = ();
-my @parametric3 = ();
-my @parametric4 = ();
+my @analogfiles = (); my $analogfiles1 = "";
+my @parametric1 = (); my @parametric2 = (); my @parametric3 = (); my @parametric4 = ();
 
 print "\tPlease input 'Version' or tap 'ENTER' for 'Base': ";
 my $version=<STDIN>;
@@ -1308,8 +1270,10 @@ else
 foreach my $analogfiles (@analogfiles)
 {
 	$analogfiles =~ s/\.o//g;
-
-	open COMP,"<$analogfiles";
+	
+	my $cover = 0;
+	open COMP,"<$analogfiles" or warn "\t!!! Failed to open '$analogfiles' file: $!.\n";
+	if ($! eq "No such file or directory"){next;}
 # 	print $analogfiles,"\n";
 #	$str =~ s/$/ ' 'x(N - length)/e		# 动态补空格。输出固定长度
 	$analogfiles1 = $analogfiles;
@@ -1320,13 +1284,15 @@ foreach my $analogfiles (@analogfiles)
 		#print $line,"\n";
 		$line =~ s/^ +//;		# clear head space
 		$line =~ s/( +)/ /g; 	# clear multiple space
-		next if (substr($line,0,1) eq "\!" or $line eq "" or $line eq "\r");
+		if (eof and $line eq ""){print UnExtFile $analogfiles1; print UnExtFile "\tby code NONE\n"; print "  Warning --> $analogfiles \thas no parameter found by code NONE!!!\n"; last;}
+		next if (substr($line,0,1) eq "\!" or length($line) < 2 or $line eq "");
 		my @type = split(" ", $line, 2);
 		$type[0] =~ s/(^\s+|\s+$)//g;	# clear head space
 		#*************************************** extract *********************************
 		if ($type[0] =~ /^(fuse|jumper)$/ and $type[1] !~ '\"')
 		{
 		$type[1] =~ s/\s+//g;
+		$cover = 1;
 		my @param = split(",", $type[1], 2);
 			$type[0] =~ s/$/ ' ' x (15 - length($type[0]))/e;
 			$param[0] =~ s/$/ ' ' x (15 - length($param[0]))/e;
@@ -1336,6 +1302,7 @@ foreach my $analogfiles (@analogfiles)
 		elsif ($type[0] =~ /^(zener|capacitor|resistor|inductor)$/ and $type[1] !~ '\"')
 		{
 		$type[1] =~ s/\s+//g;
+		$cover = 1;
 		my @param = split(",", $type[1], 4);
 			$type[0] =~ s/$/ ' ' x (15 - length($type[0]))/e;
 			$param[0] =~ s/$/ ' ' x (15 - length($param[0]))/e;
@@ -1347,6 +1314,7 @@ foreach my $analogfiles (@analogfiles)
 		elsif ($type[0] =~ /^(diode)$/ and $type[1] !~ '\"')
 		{
 		$type[1] =~ s/\s+//g;
+		$cover = 1;
 		my @param = split(",", $type[1], 3);
 			$type[0] =~ s/$/ ' ' x (15 - length($type[0]))/e;
 			$param[0] =~ s/$/ ' ' x (15 - length($param[0]))/e;
@@ -1357,6 +1325,7 @@ foreach my $analogfiles (@analogfiles)
 		elsif ($type[0] =~ /^(fuse|jumper|diode|zener|capacitor|resistor|inductor)$/ and $type[1] =~ '\"')
 		{
 		$type[1] =~ s/\s+//g;
+		$cover = 1;
 		my @param = split(",", $type[1], 4);
 			$type[0] =~ s/$/ ' ' x (15 - length($type[0]))/e;
 			$param[0] =~ s/$/ ' ' x (20 - length($param[0]))/e;
@@ -1365,8 +1334,8 @@ foreach my $analogfiles (@analogfiles)
 			push(@parametric4, $analogfiles1.$type[0].$param[0].",".$param[1].",".$param[2].",".$param[3]."\n");
 			}
 		elsif ($analogfiles =~ "discharge"){last;}
-		elsif (eof){print UnExtFile $analogfiles1; print UnExtFile "\tby code NONE\n"; print "  Warning --> $analogfiles \thas no parameter found by code NONE!!!\n"; last;}
 		elsif ($line =~ "powered"){print UnExtFile $analogfiles1; print UnExtFile "\tby code PWD\n"; print "  Warning --> $analogfiles \thas no parameter found by code PWD !!!\n"; last;}
+		if (eof and $cover == 0){print UnExtFile $analogfiles1; print UnExtFile "\tby code NONE\n"; print "  Warning --> $analogfiles \thas no parameter found by code NONE!!!\n"; last;}
 		}
 	}
 print LIST "#>> Items ",'- ' x 19,">> Type ",'- ' x 3,">> Thres ",'- ' x 3,">> Parameters ",'- ' x 15,"\n";
@@ -1383,8 +1352,7 @@ print LIST sort @parametric4;
 ############################### updating "analog" ########################################
 sub update_analog{
 our $VR;
-my $version = "";
-my $dev = "";
+my $version = ""; my $dev = "";
 
 (my $sec, my $min, my $hour, my $mday, my $mon, my $year,my $wday,my $yday,my $isdst) = localtime(time);
 my $alog = ('ALLCOMP_LOG'."-".$hour.$min.$sec.'.log');
@@ -1397,7 +1365,8 @@ print "	Specify a file to be update (or tap 'Enter' for 'ALLComp_Statement'): ";
 
 open (LOG, ">$alog");
 
-open (LIST, "<$file");
+open (LIST, "<$file") or warn "\t!!! Failed to open $file file: $!.\n";
+	if ($! eq "No such file or directory"){next;}
 while(my $device = <LIST>)
 {
 	#print "\n";
@@ -1517,7 +1486,7 @@ while(my $device = <LIST>)
 		rename "temp", $dev;
 		my $value = "";
  		if ($VR eq "True")
- 			{$value = system ("acomp -V $version $dev > NULL");}
+ 			{$value = system ("acomp -V '' $dev > NULL");}
  		else
  			{$value = system ("acomp $dev -l > NULL");}
 
@@ -1537,7 +1506,8 @@ while(my $device = <LIST>)
 close LIST;
 
 
-open (LIST, "<$file");
+open (LIST, "<$file") or warn "\t!!! Failed to open $file file: $!.\n";
+	if ($! eq "No such file or directory"){next;}
 my $dev_ori = "";
 my $dev_u = "";
 ############################### updating multiple "analog" item ##########################
@@ -1567,7 +1537,7 @@ while(my $device = <LIST>)
 		my $value = "";
 		
  		if ($VR eq "True")
- 			{$value = system ("acomp -V $version $dev > NULL");}
+ 			{$value = system ("acomp -V '' $dev > NULL");}
  		else
  			{$value = system ("acomp $dev -l > NULL");}
 		
@@ -1635,6 +1605,29 @@ while(my $device = <LIST>)
 
 close LIST;
 
+#################### for last step of multiple test ######################################
+if($dev_u eq "updated")
+{
+	sleep (0.1);
+	my $value = "";
+	
+	if ($VR eq "True")
+		{$value = system ("acomp -V '' $dev > NULL");}
+	else
+		{$value = system ("acomp $dev -l > NULL");}
+	
+	if ($value eq 0)
+	{
+		print LOG "\t".$dev_ori."\t[Object Produced]\n";			# compile passed
+		print "\t".$dev_ori."\t[Object Produced]\n";
+		}
+	else
+	{
+		print LOG "\t".$dev_ori."\t[Compile FAILED!!!]\n";			# compile failed
+		print "\t".$dev_ori."\t[Compile FAILED!!!]\n";
+		}
+	}
+
 unlink "NULL";
 close LOG;
 
@@ -1644,11 +1637,12 @@ print  "\n	Completed. Please check 'ALLCOMP_LOG' for updated items.\n";
 
 ############################### Bdg runner ###############################################
 sub Bdg_runner{
+mkdir 'Plots';
+
 (my $sec, my $min, my $hour, my $mday, my $mon, my $year,my $wday,my $yday,my $isdst) = localtime(time);
-my $start_time = time();
 
 #创建一个新的Excel文件
-my $log_report = Excel::Writer::XLSX->new('CPK_report'."-".$hour.$min.$sec.'.xlsx');
+my $log_report = Excel::Writer::XLSX->new('CPK_report'.'-'.$hour.$min.$sec.'.xlsx');
 
 #添加一个工作表
 my $summary = $log_report-> add_worksheet('Summary');
@@ -1700,14 +1694,14 @@ $summary-> write($row, $col, '=COUNTIFS(CPK_report!K2:K9999,"<1.33")', $format_d
 $row = 3; $col = 4;
 $summary-> write_formula(3, 4, "=1-(E3/E2)", $format_FPY);  #输出FPY
 
-# my $chart = $log_report-> add_chart( type => 'pie', embedded => 1 );
-# $chart->add_series(
-#     name       => '=Summary!$B$1',
-#     categories => '=Summary!$D$2:$D$3',
-#     values     => '=Summary!$E$2:$E$3',
-#     data_labels => {value => 1},
-# );
-# $summary->insert_chart('D7',$chart,0,0,1.0,1.6);
+my $chart = $log_report-> add_chart( type => 'pie', embedded => 1 );
+$chart->add_series(
+    name       => '=Summary!$B$1',
+    categories => '=Summary!$D$2:$D$3',
+    values     => '=Summary!$E$2:$E$3',
+    data_labels => {value => 1},
+);
+$summary->insert_chart('D7',$chart,0,0,1.0,1.6);
 
 $row = 0; $col = 0;
 $workbook-> write($row, $col, 'Test Items', $format_head);
@@ -1731,7 +1725,6 @@ $row = 0; $col = 9;
 $workbook-> write($row, $col, 'CP', $format_head);
 $row = 0; $col = 10;
 $workbook-> write($row, $col, 'CPK', $format_head);
-
 
 $workbook-> conditional_formatting('J2:K9999',
 {
@@ -1768,21 +1761,17 @@ $workbook-> write_formula(1, 10, "=MIN((D2-H2),(H2-E2))/I2/3", $format_data);  #
 ######################### create head ####################################################
 $row = 1;
 $col = 0;
-my $colSN = 11;
-my $log_counter = 0;
-my $board = "";
-my $headN = "";
-my $line = "";
-my $title = "";
-my $subtitle = "";
-my @Titles = ();
+my $colSN = 11; my $log_counter = 0;
+my $board = ""; my $headN = ""; my $line = ""; my $title = ""; my $subtitle = "";
+my @Titles = (); my %DevLim = ();
 
 print "=> extracting header ... ","\n";
 
 my @analogfiles = <*.log>;
 foreach my $analogfiles (@analogfiles)
 {
-	open LogN,"<$analogfiles";
+	open LogN,"<$analogfiles" or warn "\t!!! Failed to open $analogfiles file: $!.\n";
+	if ($! eq "No such file or directory"){next;}
 	$log_counter++;
 
 	if ($log_counter == 1)
@@ -1826,6 +1815,7 @@ foreach my $analogfiles (@analogfiles)
     		$workbook-> write($row, 2, "-", $format_data);
        		$workbook-> write($row, 3, $string[3], $format_data);					#输出上限值
        		$workbook-> write($row, 4, substr($string[4],0,13), $format_data);		#输出下限值
+			$DevLim{$headN} = $string[3].' / '.substr($string[4],0,13).' / '.'';
 			$workbook-> write_formula($row, 5, "=MAX(L".($row+1).":AAA".($row+1).")", $format_data);  #输出Max
 			$workbook-> write_formula($row, 6, "=MIN(L".($row+1).":AAA".($row+1).")", $format_data);  #输出Min
 			$workbook-> write_formula($row, 7, "=AVERAGE(L".($row+1).":AAA".($row+1).")", $format_data);  #输出Average
@@ -1852,6 +1842,7 @@ foreach my $analogfiles (@analogfiles)
     		$workbook-> write($row, 2, "-", $format_data);
        		$workbook-> write($row, 3, $string[3], $format_data);
        		$workbook-> write($row, 4, substr($string[4],0,13), $format_data);
+			$DevLim{$headN} = $string[3].' / '.substr($string[4],0,13).' / '.'';
 			$workbook-> write_formula($row, 5, "=MAX(L".($row+1).":AAA".($row+1).")", $format_data);  # 输出Max
 			$workbook-> write_formula($row, 6, "=MIN(L".($row+1).":AAA".($row+1).")", $format_data);  # 输出Min
 			$workbook-> write_formula($row, 7, "=AVERAGE(L".($row+1).":AAA".($row+1).")", $format_data);  # 输出Average
@@ -1888,6 +1879,7 @@ foreach my $analogfiles (@analogfiles)
     		$workbook-> write($row, 2, "-", $format_data);
        		$workbook-> write($row, 3, $string[4], $format_data);
        		$workbook-> write($row, 4, substr($string[5],0,13), $format_data);
+			$DevLim{$headN."/".$subtitle} = $string[4].' / '.substr($string[5],0,13).' / '.'';
 			$workbook-> write_formula($row, 5, "=MAX(L".($row+1).":AAA".($row+1).")", $format_data);  # 输出Max
 			$workbook-> write_formula($row, 6, "=MIN(L".($row+1).":AAA".($row+1).")", $format_data);  # 输出Min
 			$workbook-> write_formula($row, 7, "=AVERAGE(L".($row+1).":AAA".($row+1).")", $format_data);  # 输出Average
@@ -1923,6 +1915,7 @@ foreach my $analogfiles (@analogfiles)
     		$workbook-> write($row, 2, "-", $format_data);
        		$workbook-> write($row, 3, $string[3], $format_data);
        		$workbook-> write($row, 4, substr($string[4],0,13), $format_data);
+			$DevLim{$headN} = $string[3].' / '.substr($string[4],0,13).' / '.'';
 			$workbook-> write_formula($row, 5, "=MAX(L".($row+1).":AAA".($row+1).")", $format_data);  # 输出Max
 			$workbook-> write_formula($row, 6, "=MIN(L".($row+1).":AAA".($row+1).")", $format_data);  # 输出Min
 			$workbook-> write_formula($row, 7, "=AVERAGE(L".($row+1).":AAA".($row+1).")", $format_data);  # 输出Average
@@ -1957,6 +1950,7 @@ foreach my $analogfiles (@analogfiles)
        		$workbook-> write($row, 2, substr($line,index($line,"\@LIM")+6,13), $format_data);  # 输出正常值
        		$workbook-> write($row, 3, $string[4], $format_data);
        		$workbook-> write($row, 4, substr($string[5],0,13), $format_data);
+			$DevLim{$headN} = $string[4].' / '.substr($string[5],0,13).' / '.substr($line,index($line,"\@LIM")+6,13);
 			$workbook-> write_formula($row, 5, "=MAX(L".($row+1).":AAA".($row+1).")", $format_data);  # 输出Max
 			$workbook-> write_formula($row, 6, "=MIN(L".($row+1).":AAA".($row+1).")", $format_data);  # 输出Min
 			$workbook-> write_formula($row, 7, "=AVERAGE(L".($row+1).":AAA".($row+1).")", $format_data);  # 输出Average
@@ -1995,6 +1989,7 @@ foreach my $analogfiles (@analogfiles)
     		$workbook-> write($row, 2, "-", $format_data);
        		$workbook-> write($row, 3, $string[4], $format_data);
        		$workbook-> write($row, 4, substr($string[5],0,13), $format_data);
+			$DevLim{$headN."/".$subtitle} = $string[4].' / '.substr($string[5],0,13).' / '.'';
 			$workbook-> write_formula($row, 5, "=MAX(L".($row+1).":AAA".($row+1).")", $format_data);  # 输出Max
 			$workbook-> write_formula($row, 6, "=MIN(L".($row+1).":AAA".($row+1).")", $format_data);  # 输出Min
 			$workbook-> write_formula($row, 7, "=AVERAGE(L".($row+1).":AAA".($row+1).")", $format_data);  # 输出Average
@@ -2048,11 +2043,10 @@ foreach my $key (values %matrix) {$matrix{$key} = "";}		# initialize values
 # my @keys = keys %matrix;
 # my $size = @keys;
 # print "2 - 哈希大小: $size\n";
-# 
+
 # foreach my $key (keys %matrix) {
 #     print $matrix{$key}, "\n";
 # }
-
 
 $row = 0;
 $col = 1;
@@ -2060,7 +2054,8 @@ $col = 1;
 foreach my $analogfiles (@analogfiles)		#log
 {
 	my $counter = 1;
-	open LogN,"<$analogfiles";
+	open LogN,"<$analogfiles" or warn "\t!!! Failed to open $analogfiles file: $!.\n";
+	if ($! eq "No such file or directory"){next;}
 
 	if ($board eq 'single'){
 	while($line = <LogN>)	
@@ -2086,7 +2081,6 @@ foreach my $analogfiles (@analogfiles)		#log
 			$counter++;
 			$col++;
 			}
-    	#elsif ($title !~ "\/" and $string[1] eq $title and $string[2] eq "00")		# 单项测试数据
     	elsif (exists($matrix{$string[1]}))			# 单项测试数据
 		{
 			while($line = <LogN>)
@@ -2103,7 +2097,6 @@ foreach my $analogfiles (@analogfiles)		#log
 					}
 				}
 			}
-		#elsif ($title =~ "\/" and $string[1] eq substr($title,0,index($title,"\/")) and $string[2] eq "00")		# 多项测试数据
 		else
 		{
 			while($line = <LogN>)
@@ -2151,7 +2144,6 @@ foreach my $analogfiles (@analogfiles)		#log
 			$col++;
 			}
 
-		#elsif ($title !~ "\/" and substr($string[1],index($string[1],"%")+1) eq $title and $string[2] eq "00")	# 单项测试数据
 		elsif (exists($matrix{$string[1]}))	# 单项测试数据
 		{
 			while($line = <LogN>)
@@ -2169,7 +2161,6 @@ foreach my $analogfiles (@analogfiles)		#log
 					}
 				}
 			}
-		#elsif ($title =~ "\/" and substr($string[1], index($string[1],"%")+1) eq substr($title,0,index($title,"\/")) and $string[2] eq "00")	# 多项测试数据
 		else
 		{
 			while($line = <LogN>)
@@ -2196,30 +2187,188 @@ foreach my $analogfiles (@analogfiles)		#log
 
 # print "PPDCIN_AON/OUTPUT value is: $matrix{'PPDCIN_AON/OUTPUT'} \n";
 # print "rn304 value is: $matrix{'rn304'} \n";
-# 
+
 # my @group = split("\t",$matrix{'PPDCIN_AON/OUTPUT'});
 # $size = @group;
 # print "z - 哈希大小: $size\n";
 
-# $workbook-> write_row (2, 11, \@group, $format_data); 
+# initialize PDF subject.
+my $pdf = PDF::Builder->new(-file => 'CPK_report'.'-'.$hour.$min.$sec.'.pdf');
+my $page = $pdf->page();
+# $page->mediabox('A4');  # 设置 A4 纸张尺寸（595x842点）
+$page->mediabox(612, 792);  # 设置 A4 纸张尺寸（595x842点）
 
+my $data = [
+    ['Plot', 'Item', 'Nominal', 'LoLimit', 'Hilimit', 'Minimum', 'Maxmium', 'CPK'],  # 表头
+];
 
 foreach my $i (0..@Titles-1)		# output array to Excel.
 {
-# 	print $Titles[$i],"\n";
 	my @group = split("\t",$matrix{$Titles[$i]});
-	$workbook-> write_row ($i+1, 11, \@group, $format_data); 
+	my $USL = substr($DevLim{$Titles[$i]},0,13);
+	my $LSL = substr($DevLim{$Titles[$i]},16,13);
+	my $Nom = substr($DevLim{$Titles[$i]},32,13);
+	my $min = min @group;
+	my $max = max @group;
+	my $mean = @group ? sum(@group) / @group : warn "!!! array is empty.\n";
+	my $sigma = sqrt( sum( map { ($_-$mean)**2 } @group ) / @group );
+	my $CPK = min(($USL - $mean),($mean - $LSL))/($sigma*3);
+	
+	my $data1 = [
+    [$i+1, $Titles[$i], $Nom, $LSL, $USL, $min, $max, $CPK],  # 表头
+	];
+	$data = [@{$data}, @{$data1}];
 	}
 
-# unlink "head";
+my $table = PDF::Table->new();
+$table->table(
+    $pdf,          # PDF::Builder 对象
+    $page,         # 页面对象
+    $data,         # 表格数据
+    'x'         => 20,		# 左下角起点 X 坐标（距左边距）
+    'y'         => 770,		# 左下角起点 Y 坐标（距底边距）
+    'w'         => 550,		# 表格总宽度（单位：点）
+    'h' 		=> 750,		# 表格总高度（单位：点）
+    'next_y'	=> 750,
+    'next_h'	=> 700,
+    'bg_color_odd'    => "silver",
+    # 'bg_color_even'   => "lightblue",
+    'border_w'	=> 1,
+    'padding'         => 2,		# 单元格内边距
+  	# 'padding_right'   => 10,
+    font       => $pdf->corefont('Helvetica-Bold'),  # 字体设置
+    font_size  => 6,   			# 字号
+    'justify'	=> 'center',
+    header_props => {    		# 表头样式
+    	'font_size'	=> 8,
+        'bg_color'	=> 'green',
+        'fg_color'	=> 'orange',
+        'justify'	=> 'center',
+    },
+    cell_props  => [     	# 单元格样式（按列索引设置）
+        [{ width => 30 }], 	# 第1列宽度
+        [{ width => 30 }],	# 第2列宽度
+    ]
+);
+
+$pdf->save();
+
+$pdf = PDF::Builder->open('CPK_report'.'-'.$hour.$min.$sec.'.pdf');
+foreach my $i (0..@Titles-1)		# output array to Excel.
+{
+	print "analyzing ".$Titles[$i]," ...\n";
+	my @group = split("\t",$matrix{$Titles[$i]});
+	$workbook-> write_row ($i+1, 11, \@group, $format_data); 
+	next if (scalar(@group) == 0);
+
+	# print $DevLim{$Titles[$i]},"\n";
+	my $USL = substr($DevLim{$Titles[$i]},0,13);
+	my $LSL = substr($DevLim{$Titles[$i]},16,13);
+	my $Nom = substr($DevLim{$Titles[$i]},32,13);
+	# print $USL,"\n";
+	# print $LSL,"\n";
+	# print $Nom,"\n";
+	if ($USL eq "+9.999999E+99"){$USL = (max @group)*1.5;}
+
+	my @x; my @y; my $y_max; my $y_min;
+	my @LoLi; my @HiLi; my @Nomi;
+	foreach my $s (0..@group-1)
+	{
+		push @x, '';
+		push @y, $group[$s];
+		push @LoLi, $LSL;
+		push @HiLi, $USL;
+		push @Nomi, $Nom;
+		}
+
+	my $min = min @group;
+	my $max = max @group;
+	my $mean = @group ? sum(@group) / @group : warn "!!! array is empty.\n";
+	print "	Min: $min\n";
+	print "	Max: $max\n";
+	print "	Ave: $mean\n"; 
+
+	# calculate StdDev
+    my $sigma = sqrt( sum( map { ($_-$mean)**2 } @group ) / @group );
+	printf "	StdDev: %.4f\n", $sigma;
+	
+	# calculate CPK
+    my $CPK = min(($USL - $mean),($mean - $LSL))/($sigma*3);
+	printf "	CPK: %.4f\n", $CPK;
+	$CPK = sprintf("%.4f", $CPK);
+
+	if ($max > 0){$y_max = $USL * 1.1}else{$y_max = $max * 0.9}
+	if ($min > 0){$y_min = $LSL * 0.9}else{$y_min = $min * 1.1}
+	if ($LSL < 0){$y_min = $LSL * 1.1}
+
+	# visualize object
+	my $graph = GD::Graph::points->new(700, 500);
+	$graph->set(
+	    title			=> uc($Titles[$i])." data distribution",
+	    x_label			=> "Count = ".scalar @group.",   Min = $min,   Max = $max,   CPK = $CPK",
+	    y_label			=> 'Tolerance: '.$LSL.' / '.$USL,
+	    markers			=> [7, 3, 9, 8],
+	    dclrs			=> ['marine', 'lred', 'lred', 'green'],
+		transparent		=> 0,
+	    legend_placement => 'RC',
+	    marker_size		=> 5,
+		# x_label_skip	=> 100,
+    	y_tick_number	=> 10,            	# Y 轴刻度数量
+    	y_max_value		=> $y_max,			# Y 轴最大值
+    	y_min_value		=> $y_min,			# Y 轴最小值
+    	#y_tick_length	=> 10,            	# Y 轴刻标长度
+    	y_long_ticks    => 1,				# Y 轴长刻度
+    	x_tick_length	=> 10,            	# X 轴刻标长度
+		axis_space      => 10,				# 轴线到文字的距离
+		x_label_position	=> 1/2,			# X 轴承标位置
+		# bgclr			=> 'gray',
+	);
+
+	# format array（X-Y coordinate pair）
+	my @data = (\@x, \@y, \@HiLi, \@LoLi, \@Nomi);
+
+	$graph->set_legend('Measured Value', 'High Limit', 'Low Limit', 'Nominal Value');
+
+	# generate PNG diagram
+	# if ($Titles[$i] =~ "\/"){$Titles[$i] =~ s/\//\%/i;}
+	my $PNGTitle = $Titles[$i];
+	if ($PNGTitle =~ "\/"){$PNGTitle =~ s/\//\%/i;}
+	$workbook-> write_url ($i+1, 0, 'Plots/'.$PNGTitle.'.png', $Titles[$i], $format_item);
+
+	open my $fh, '>', 'Plots/'.uc($PNGTitle).'.png' or die $!;
+	binmode $fh;
+	print $fh $graph->plot(\@data)->png;
+	close $fh;
+
+	# 添加A4页面（尺寸为595x842点）
+	my $page = $pdf->page();
+	$page->mediabox(750, 550);
+	
+	# 加载图片（支持PNG/JPEG格式）
+	my $image = $pdf->image('Plots/'.$PNGTitle.'.png');  
+	$page->object($image, 25, 25);	# 指定坐标位置
+
+	# 插入单行文本
+	my $font = $pdf->corefont("Helvetica");
+	my $text = $page->text();
+	$text->fillcolor('white');
+	$text->font($font, 12);
+	$text->translate(5, 540);
+	$text->text($Titles[$i]);
+
+	}
+
+unlink "head";
 $log_report->close();
 
-my $end_time = time();
-my $duration = $end_time - $start_time;
-printf "	runtime: %.4f Sec\n", $duration;
+# 保存PDF文件
+$pdf->save('CPK_report'.'-'.$hour.$min.$sec.'.pdf');
 
 }
 
+my $end_time = time();
+my $duration = $end_time - $start_time;
+printf "\n	runtime: %.4f Sec\n", $duration;
 
 #-----------------------------------------------------------------------------------------
 print "\n\t>>> done ...\n\n";
